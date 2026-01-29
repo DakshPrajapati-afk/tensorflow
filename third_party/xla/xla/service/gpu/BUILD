@@ -51,8 +51,6 @@ filegroup(
     ]),
 )
 
-exports_files(srcs = ["gpu_compiler_test_autotune_db.textproto"])
-
 tf_proto_library(
     name = "backend_configs",
     srcs = ["backend_configs.proto"],
@@ -1963,7 +1961,6 @@ xla_test(
         ],
     },
     backends = ["gpu"],
-    data = ["gpu_compiler_test_autotune_db.textproto"],
     shard_count = 2,
     deps = [
         ":alias_info",
@@ -2971,7 +2968,6 @@ cc_library(
         ":alias_info",
         ":backend_configs_cc",
         ":cublas_cudnn",
-        ":ir_emission_utils",
         "//xla:shape_util",
         "//xla/hlo/ir:hlo",
         "//xla/stream_executor:device_description",
@@ -2990,12 +2986,9 @@ xla_cc_test(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test",
-        "//xla/hlo/testlib:test_helpers",
-        "//xla/service:copy_insertion",
         "//xla/stream_executor:device_description",
         "//xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/log:check",
-        "@tsl//tsl/platform:statusor",
     ],
 )
 

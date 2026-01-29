@@ -1364,6 +1364,11 @@ ENTRY e {
 }
 
 TEST_F(GemmFusionTest, RaggedDotBecomesFusion) {
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  bool has_grouped_gemm =
+      debug_options.xla_gpu_experimental_use_ragged_dot_grouped_gemm() &&
+      debug_options.xla_gpu_enable_cublaslt();
+
   auto module = ParseAndReturnVerifiedModule(R"(
 HloModule m
 
@@ -1377,6 +1382,13 @@ ENTRY main {
 }
 )")
                     .value();
+
+  if (has_grouped_gemm) {
+    // If CublasLt support is available, do not fuse the ragged-dot op.
+    EXPECT_FALSE(GemmFusion(gpu_version_).Run(module.get()).value());
+    return;
+  }
+
   EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
