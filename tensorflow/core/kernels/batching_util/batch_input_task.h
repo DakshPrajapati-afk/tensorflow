@@ -147,12 +147,12 @@ class BatchInputTask
  public:
   using SplitInputFunc = std::function<absl::Status(
       std::unique_ptr<TaskType>* input_task, int first_output_task_size,
-      int input_batch_size_limit,
+      int input_batch_size_limit, bool enable_resplit_path,
       std::vector<std::unique_ptr<TaskType>>* output_tasks)>;
 
   BatchInputTask(std::unique_ptr<TaskType> input_task,
                  int open_batch_remaining_slot, int batch_size_limit,
-                 SplitInputFunc split_input_func);
+                 bool enable_resplit_path, SplitInputFunc split_input_func);
 
   // Outputs the task handles for the input task.
   // Each task handle represents a slice of task after input task is split, and
@@ -179,8 +179,8 @@ class BatchInputTask
 
   const int input_task_size_ = 0;
   const int open_batch_remaining_slot_;
-
   const int batch_size_limit_;
+  const bool enable_resplit_path_;
   const SplitInputFunc split_func_;
 
   const InputSplitMetadata input_split_metadata_;
@@ -216,11 +216,13 @@ template <typename TaskType>
 BatchInputTask<TaskType>::BatchInputTask(std::unique_ptr<TaskType> input_task,
                                          int open_batch_remaining_slot,
                                          int batch_size_limit,
+                                         bool enable_resplit_path,
                                          SplitInputFunc split_input_func)
     : input_task_(std::move(input_task)),
       input_task_size_(input_task_->size()),
       open_batch_remaining_slot_(open_batch_remaining_slot),
       batch_size_limit_(batch_size_limit),
+      enable_resplit_path_(enable_resplit_path),
       split_func_(split_input_func),
       input_split_metadata_(input_task_size_, open_batch_remaining_slot,
                             batch_size_limit) {}
@@ -257,7 +259,7 @@ template <typename TaskType>
 absl::Status BatchInputTask<TaskType>::SplitBatches(
     std::vector<std::unique_ptr<TaskType>>* output_tasks) {
   return split_func_(&input_task_, open_batch_remaining_slot_,
-                     batch_size_limit_, output_tasks);
+                     batch_size_limit_, enable_resplit_path_, output_tasks);
 }
 
 }  // namespace internal

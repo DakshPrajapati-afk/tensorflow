@@ -166,13 +166,13 @@ TEST_F(BatchInputTaskTest, BatchInputToSplitTasks) {
   auto batch_input_task =
       std::make_shared<BatchInputTask<BatchResourceBase::BatchTask>>(
           std::move(batch_task), /*open_batch_remaining_slot=*/1,
-          /*batch_size_limit=*/3, BatchResourceBase::SplitInputTask);
+          /*batch_size_limit=*/3, /*enable_resplit_path=*/false,
+          BatchResourceBase::SplitInputTask);
 
   std::vector<
       std::unique_ptr<BatchInputTaskHandle<BatchResourceBase::BatchTask>>>
       output_tasks;
   batch_input_task->ToTaskHandles(&output_tasks);
-
 
   // Output tasks haven't invoked `done_callback`, so
   // `batch_task->done_callback` hasn't run yet.

@@ -280,7 +280,7 @@ class BatchResourceBase : public ResourceBase {
   // open_batch_remaining_slot.
   static Status SplitInputTask(
       std::unique_ptr<BatchTask>* input_task_ptr, int open_batch_remaining_slot,
-      int max_batch_size,
+      int max_batch_size, bool enable_resplit_path,
       std::vector<std::unique_ptr<BatchTask>>* output_tasks);
 
   // Splits the batch costs to each task.
