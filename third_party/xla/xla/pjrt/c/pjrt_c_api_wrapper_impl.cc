@@ -536,6 +536,21 @@ PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args) {
   return nullptr;
 }
 
+PJRT_Error* PJRT_Error_ForEachPayload(PJRT_Error_ForEachPayload_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Error_GetPayloads_Args", PJRT_Error_ForEachPayload_Args_STRUCT_SIZE,
+      args->struct_size));
+  args->error->status.ForEachPayload(
+      [&](absl::string_view key, const absl::Cord& value) {
+        std::string value_str(value);
+        if (args->visitor) {
+          args->visitor(key.data(), key.size(), value_str.data(),
+                        value_str.size(), args->user_arg);
+        }
+      });
+  return nullptr;
+}
+
 // ---------------------------------- Plugin -----------------------------------
 
 PJRT_Error* PJRT_Plugin_Attributes_Empty(PJRT_Plugin_Attributes_Args* args) {
@@ -900,13 +915,31 @@ PJRT_Error* PJRT_AsyncHostToDeviceTransferManager_TransferLiteral(
 
 PJRT_Error* PJRT_Device_PoisonExecution(
     PJRT_Device_PoisonExecution_Args* args) {
+  // TODO: b/488892533 - Make this check stricter after 12week compatibility
+  // window.
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Device_PoisonExecution_Args",
-      PJRT_Device_PoisonExecution_Args_STRUCT_SIZE, args->struct_size));
+      PJRT_STRUCT_SIZE(PJRT_Device_PoisonExecution_Args, poisoned),
+      args->struct_size));
 
   absl::Status error = absl::Status(
       pjrt::PjrtErrorCodeToStatusCode(args->error_code),
       absl::string_view(args->error_message, args->error_message_size));
+  // TODO: b/488892533 - Make this check stricter after 12week compatibility
+  // window.
+  if (args->struct_size >=
+      PJRT_STRUCT_SIZE(PJRT_Device_PoisonExecution_Args, num_payload)) {
+    absl::flat_hash_map<std::string, xla::PjRtValueType> payload_map =
+        pjrt::ConvertFromPjRtNamedValueList(args->payload, args->num_payload);
+    for (const std::pair<const std::string, xla::PjRtValueType>& pair :
+         payload_map) {
+      const std::string& name = pair.first;
+      const xla::PjRtValueType& value = pair.second;
+      if (std::holds_alternative<std::string>(value)) {
+        error.SetPayload(name, absl::Cord(std::get<std::string>(value)));
+      }
+    }
+  }
 
   PJRT_ASSIGN_OR_RETURN(args->poisoned, args->device->device->PoisonExecution(
                                             args->launch_id, error));
@@ -3676,6 +3709,8 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       /*PJRT_LoadedExecutable_AddressableDeviceLogicalIds=*/
       pjrt::PJRT_LoadedExecutable_AddressableDeviceLogicalIds,
       /*PJRT_Buffer_Bitcast=*/pjrt::PJRT_Buffer_Bitcast,
+
+      /*PJRT_Error_GetPayloads=*/pjrt::PJRT_Error_ForEachPayload,
   };
 }
 

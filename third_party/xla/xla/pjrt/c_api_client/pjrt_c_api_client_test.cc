@@ -946,10 +946,61 @@ ENTRY Identity() -> f32[2, 2] {
   EXPECT_THAT(result->at(0).at(0)->ToLiteral().Await(),
               StatusIs(tsl::error::INTERNAL, HasSubstr("foobar1")));
 
-  // Attempting to poison a non-existent execution should fail.
   poison_result = client->addressable_devices().front()->PoisonExecution(
       kLaunchId + 12, Internal("foobar3"));
   EXPECT_THAT(poison_result, IsOkAndHolds(false));
+}
+
+TEST(PjRtCApiClientTest, PoisonExecutionWithPayload) {
+  SetUpCpuPjRtApi();
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetCApiClient("cpu"));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                       ParseAndReturnUnverifiedModule(R"(
+HloModule Identity
+ENTRY Identity(param: f32[2, 2]) -> f32[2, 2] {
+    param = f32[2, 2] parameter(0)
+    ROOT result = f32[2, 2] copy(param)
+})",
+                                                      {}));
+  XlaComputation xla_computation(hlo_module->ToProto());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> pjrt_executable,
+                       client->CompileAndLoad(xla_computation, {}));
+
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 2});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>
+          transfer_manager,
+      client->CreateBuffersForAsyncHostToDevice({shape},
+                                                client->memory_spaces()[0]));
+  std::unique_ptr<PjRtBuffer> buffer = transfer_manager->RetrieveBuffer(0);
+
+  const int32_t kLaunchId = 456;
+  ExecuteOptions opts;
+  opts.launch_id = kLaunchId;
+  opts.execution_mode = ExecuteOptions::ExecutionMode::kAsynchronous;
+
+  std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result;
+  TF_ASSERT_OK_AND_ASSIGN(
+      result,
+      pjrt_executable->Execute(/*argument_handles=*/{{buffer.get()}}, opts));
+
+  absl::Status poison_status = absl::InternalError("poisoned with payload");
+  poison_status.SetPayload("test_key", absl::Cord("test_payload_value"));
+
+  absl::StatusOr<bool> poison_result =
+      client->addressable_devices().front()->PoisonExecution(kLaunchId,
+                                                             poison_status);
+  ASSERT_THAT(poison_result, IsOkAndHolds(true));
+
+  ASSERT_EQ(result.size(), 1);
+  ASSERT_EQ(result.at(0).size(), 1);
+  absl::Status final_status = result.at(0).at(0)->ToLiteral().Await().status();
+  EXPECT_THAT(final_status, StatusIs(absl::StatusCode::kInternal,
+                                     HasSubstr("poisoned with payload")));
+  EXPECT_EQ(final_status.GetPayload("test_key"),
+            absl::Cord("test_payload_value"));
 }
 
 TEST(PjRtCApiClientTest, AddressableDeviceLogicalIds) {
